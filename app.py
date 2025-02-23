@@ -1,105 +1,108 @@
-from flask import Flask, render_template, request, redirect, url_for, session, g
+from flask import Flask, render_template, request, redirect, url_for, session, send_file
 import sqlite3
-from datetime import datetime
+import pandas as pd
 
 app = Flask(__name__)
-app.secret_key = "supersecretkey"
+app.secret_key = 'tu_secreto'
 
-DATABASE = "database.db"
-
-# Función para conectar con la base de datos
+# Conectar con la base de datos
 def get_db_connection():
-    conn = sqlite3.connect(DATABASE)
+    conn = sqlite3.connect('database.db')
     conn.row_factory = sqlite3.Row
     return conn
 
-# Página de inicio de sesión
-@app.route("/", methods=["GET", "POST"])
+# Ruta de inicio de sesión
+@app.route('/', methods=['GET', 'POST'])
 def login():
-    error = None
-    if request.method == "POST":
-        username = request.form["username"]
-        password = request.form["password"]
+    if request.method == 'POST':
+        username = request.form['username']
+        password = request.form['password']
 
         conn = get_db_connection()
-        user = conn.execute("SELECT * FROM users WHERE username = ? AND password = ?", (username, password)).fetchone()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM users WHERE username = ? AND password = ?", (username, password))
+        user = cursor.fetchone()
         conn.close()
 
         if user:
-            session["user"] = user["username"]
-            session["role"] = user["role"]
-            return redirect(url_for("dashboard"))
+            session['username'] = user['username']
+            session['role'] = user['role']
+            return redirect(url_for('dashboard'))
         else:
-            error = "Usuario o contraseña incorrectos"
-    
-    return render_template("login.html", error=error)
+            return render_template('login.html', error="Usuario o contraseña incorrectos")
 
-# Página principal (dashboard)
-@app.route("/dashboard")
+    return render_template('login.html')
+
+# Ruta de logout
+@app.route('/logout')
+def logout():
+    session.pop('username', None)
+    session.pop('role', None)
+    return redirect(url_for('login'))
+
+# Ruta del dashboard - Panel de fichajes
+@app.route('/dashboard')
 def dashboard():
-    if "user" not in session:
-        return redirect(url_for("login"))
+    if 'username' not in session:
+        return redirect(url_for('login'))
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    # Si el usuario es admin, ve todos los fichajes
+    if session["role"] == "admin":
+        cursor.execute("SELECT fichajes.id, users.username, fichajes.vehicle, fichajes.status, fichajes.timestamp FROM fichajes JOIN users ON fichajes.user_id = users.id")
+    else:
+        cursor.execute("SELECT fichajes.id, users.username, fichajes.vehicle, fichajes.status, fichajes.timestamp FROM fichajes JOIN users ON fichajes.user_id = users.id WHERE users.username = ?", (session["username"],))
+
+    fichajes = cursor.fetchall()
+    conn.close()
+
+    return render_template("dashboard.html", fichajes=fichajes, role=session["role"])
+
+# Ruta para registrar fichajes
+@app.route('/fichar', methods=['POST'])
+def fichar():
+    if 'username' not in session:
+        return redirect(url_for('login'))
+
+    vehicle = request.form['vehicle']
+    status = request.form['status']
+    username = session['username']
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("INSERT INTO fichajes (user_id, vehicle, status) VALUES ((SELECT id FROM users WHERE username = ?), ?, ?)", 
+                   (username, vehicle, status))
+    conn.commit()
+    conn.close()
+
+    return redirect(url_for('dashboard'))
+
+# Exportar fichajes a Excel
+@app.route('/export')
+def export():
+    if 'username' not in session:
+        return redirect(url_for('login'))
 
     conn = get_db_connection()
 
     if session["role"] == "admin":
-        fichajes = conn.execute("SELECT * FROM fichajes").fetchall()
+        df = pd.read_sql_query("SELECT fichajes.id, users.username, fichajes.vehicle, fichajes.status, fichajes.timestamp FROM fichajes JOIN users ON fichajes.user_id = users.id", conn)
     else:
-        fichajes = conn.execute("SELECT * FROM fichajes WHERE conductor = ?", (session["user"],)).fetchall()
-    
-    conn.close()
-    
-    return render_template("dashboard.html", fichajes=fichajes, user=session["user"], role=session["role"])
+        df = pd.read_sql_query("SELECT fichajes.id, users.username, fichajes.vehicle, fichajes.status, fichajes.timestamp FROM fichajes JOIN users ON fichajes.user_id = users.id WHERE users.username = ?", conn, params=(session["username"],))
 
-# Página de fichaje
-@app.route("/fichar", methods=["GET", "POST"])
-def fichar():
-    if "user" not in session:
-        return redirect(url_for("login"))
-
-    if request.method == "POST":
-        vehiculo = request.form.get("vehiculo")  # Usamos .get() para evitar KeyError
-        estado = request.form.get("estado")
-
-        if not vehiculo or not estado:
-            return "Error: Todos los campos son obligatorios", 400
-
-        fecha_hora = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")  # UTC para evitar problemas de zona horaria
-
-        conn = get_db_connection()
-        conn.execute("INSERT INTO fichajes (conductor, vehiculo, estado, fecha_hora) VALUES (?, ?, ?, ?)",
-                     (session["user"], vehiculo, estado, fecha_hora))
-        conn.commit()
-        conn.close()
-
-        return redirect(url_for("dashboard"))
-
-    return render_template("fichar.html")
-
-# Cerrar sesión
-@app.route("/logout")
-def logout():
-    session.clear()
-    return redirect(url_for("login"))
-
-# Exportar fichajes a CSV
-@app.route("/export")
-def export():
-    if "user" not in session or session["role"] != "admin":
-        return redirect(url_for("login"))
-
-    conn = get_db_connection()
-    fichajes = conn.execute("SELECT * FROM fichajes").fetchall()
     conn.close()
 
-    output = "ID,Conductor,Vehículo,Estado,Hora\n"
-    for fichaje in fichajes:
-        output += f"{fichaje['id']},{fichaje['conductor']},{fichaje['vehiculo']},{fichaje['estado']},{fichaje['fecha_hora']}\n"
+    file_path = "fichajes.xlsx"
+    df.to_excel(file_path, index=False)
 
-    return output, 200, {"Content-Type": "text/csv", "Content-Disposition": "attachment; filename=fichajes.csv"}
+    return send_file(file_path, as_attachment=True)
 
-if __name__ == "__main__":
+# Iniciar el servidor
+if __name__ == '__main__':
     app.run(debug=True)
+
 
 
 
