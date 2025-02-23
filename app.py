@@ -1,134 +1,93 @@
-from flask import Flask, render_template, request, redirect, url_for, session, send_file
+from flask import Flask, render_template, request, redirect, url_for, session
 import sqlite3
-import pandas as pd
-from datetime import datetime, timedelta
+import os
+from datetime import datetime
 
 app = Flask(__name__)
-app.secret_key = 'tu_secreto'
+app.secret_key = "supersecretkey"  # Clave para la sesión
 
 # Conectar con la base de datos
 def get_db_connection():
-    conn = sqlite3.connect('database.db')
+    conn = sqlite3.connect("database.db")
     conn.row_factory = sqlite3.Row
     return conn
 
-# Ruta de inicio de sesión
-@app.route('/', methods=['GET', 'POST'])
+# Página de inicio (Login)
+@app.route("/", methods=["GET", "POST"])
 def login():
-    if request.method == 'POST':
-        username = request.form['username']
-        password = request.form['password']
+    if request.method == "POST":
+        username = request.form["username"]
+        password = request.form["password"]
 
         conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM users WHERE username = ? AND password = ?", (username, password))
-        user = cursor.fetchone()
+        user = conn.execute("SELECT * FROM users WHERE username = ? AND password = ?", (username, password)).fetchone()
         conn.close()
 
         if user:
-            session['username'] = user['username']
-            session['role'] = user['role']
-            return redirect(url_for('dashboard'))
+            session["user"] = username
+            session["role"] = user["role"]
+            return redirect(url_for("dashboard"))
         else:
-            return render_template('login.html', error="Usuario o contraseña incorrectos")
+            return render_template("login.html", error="Usuario o contraseña incorrectos")
 
-    return render_template('login.html')
+    return render_template("login.html")
 
-# Ruta de logout
-@app.route('/logout')
-def logout():
-    session.pop('username', None)
-    session.pop('role', None)
-    return redirect(url_for('login'))
-
-# Ruta del dashboard - Panel de fichajes
-@app.route('/dashboard')
+# Panel de usuario
+@app.route("/dashboard")
 def dashboard():
-    if 'username' not in session:
-        return redirect(url_for('login'))
+    if "user" not in session:
+        return redirect(url_for("login"))
 
     conn = get_db_connection()
-    cursor = conn.cursor()
-
-    # Si el usuario es admin, ve todos los fichajes
     if session["role"] == "admin":
-        cursor.execute("""
-            SELECT fichajes.id, users.username, fichajes.vehicle, fichajes.status, fichajes.timestamp
-            FROM fichajes 
-            JOIN users ON fichajes.user_id = users.id
-        """)
+        fichajes = conn.execute("SELECT * FROM fichajes").fetchall()
     else:
-        cursor.execute("""
-            SELECT fichajes.id, users.username, fichajes.vehicle, fichajes.status, fichajes.timestamp
-            FROM fichajes 
-            JOIN users ON fichajes.user_id = users.id 
-            WHERE users.username = ?
-        """, (session["username"],))
-
-    fichajes = cursor.fetchall()
+        fichajes = conn.execute("SELECT * FROM fichajes WHERE conductor = ?", (session["user"],)).fetchall()
     conn.close()
 
-    return render_template("dashboard.html", fichajes=fichajes, role=session["role"])
+    return render_template("dashboard.html", user=session["user"], role=session["role"], fichajes=fichajes)
 
-# Ruta para registrar fichajes
-@app.route('/fichar', methods=['GET', 'POST'])
+# Fichaje
+@app.route("/fichar", methods=["POST"])
 def fichar():
-    if 'username' not in session:
-        return redirect(url_for('login'))
+    if "user" not in session:
+        return redirect(url_for("login"))
 
-    # Lista de vehículos predefinidos
-    vehicles = ["7411MRJ", "8327LGK"]
-
-    if request.method == "POST":
-        vehicle = request.form['vehicle']
-        status = request.form['status']
-        username = session['username']
-
-        # Obtener la hora actual correctamente en la zona horaria local (sin aplicar más cambios)
-        hora_actual = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("""
-            INSERT INTO fichajes (user_id, vehicle, status, timestamp) 
-            VALUES ((SELECT id FROM users WHERE username = ?), ?, ?, ?)
-        """, (username, vehicle, status, hora_actual))
-        conn.commit()
-        conn.close()
-
-        return redirect(url_for('dashboard'))
-
-    return render_template("fichar.html", vehicles=vehicles)
-
-# Exportar fichajes a Excel
-@app.route('/export')
-def export():
-    if 'username' not in session:
-        return redirect(url_for('login'))
+    vehiculo = request.form["vehiculo"]
+    estado = request.form["estado"]
+    fecha_hora = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")  # UTC para evitar problemas de zona horaria
 
     conn = get_db_connection()
-
-    if session["role"] == "admin":
-        df = pd.read_sql_query("""
-            SELECT fichajes.id, users.username, fichajes.vehicle, fichajes.status, fichajes.timestamp
-            FROM fichajes 
-            JOIN users ON fichajes.user_id = users.id
-        """, conn)
-    else:
-        df = pd.read_sql_query("""
-            SELECT fichajes.id, users.username, fichajes.vehicle, fichajes.status, fichajes.timestamp
-            FROM fichajes 
-            JOIN users ON fichajes.user_id = users.id 
-            WHERE users.username = ?
-        """, conn, params=(session["username"],))
-
+    conn.execute("INSERT INTO fichajes (conductor, vehiculo, estado, fecha_hora) VALUES (?, ?, ?, ?)",
+                 (session["user"], vehiculo, estado, fecha_hora))
+    conn.commit()
     conn.close()
 
-    file_path = "fichajes.xlsx"
-    df.to_excel(file_path, index=False)
+    return redirect(url_for("dashboard"))
 
-    return send_file(file_path, as_attachment=True)
+# Exportar datos
+@app.route("/export")
+def export():
+    if "user" not in session or session["role"] != "admin":
+        return redirect(url_for("dashboard"))
 
-# Iniciar el servidor
-if __name__ == '__main__':
-    app.run(debug=True)
+    conn = get_db_connection()
+    fichajes = conn.execute("SELECT * FROM fichajes").fetchall()
+    conn.close()
+
+    output = "ID,Conductor,Vehículo,Estado,Fecha\n"
+    for ficha in fichajes:
+        output += f"{ficha['id']},{ficha['conductor']},{ficha['vehiculo']},{ficha['estado']},{ficha['fecha_hora']}\n"
+
+    return output, 200, {"Content-Type": "text/csv", "Content-Disposition": "attachment; filename=fichajes.csv"}
+
+# Cerrar sesión
+@app.route("/logout")
+def logout():
+    session.clear()
+    return redirect(url_for("login"))
+
+if __name__ == "__main__":
+    port = int(os.getenv("PORT", 10000))  # Render asignará el puerto
+    app.run(host="0.0.0.0", port=port, debug=True)
+
