@@ -58,8 +58,8 @@ def fichar():
         return redirect(url_for("login"))
 
     if request.method == "POST":
-        vehiculo = request.form.get("vehiculo", "").strip()
-        estado = request.form.get("estado", "").strip()
+        vehiculo = request.form.get("vehiculo")  # Usamos .get() para evitar KeyError
+        estado = request.form.get("estado")
 
         if not vehiculo or not estado:
             return "Error: Todos los campos son obligatorios", 400
@@ -82,7 +82,7 @@ def logout():
     session.clear()
     return redirect(url_for("login"))
 
-# Exportar fichajes a Excel
+# Exportar fichajes a CSV
 @app.route("/export")
 def export():
     if "user" not in session or session["role"] != "admin":
@@ -92,7 +92,6 @@ def export():
     fichajes = conn.execute("SELECT * FROM fichajes").fetchall()
     conn.close()
 
-    # Crear CSV en respuesta
     output = "ID,Conductor,Vehículo,Estado,Hora\n"
     for fichaje in fichajes:
         output += f"{fichaje['id']},{fichaje['conductor']},{fichaje['vehiculo']},{fichaje['estado']},{fichaje['fecha_hora']}\n"
@@ -101,5 +100,6 @@ def export():
 
 if __name__ == "__main__":
     app.run(debug=True)
+
 
 
