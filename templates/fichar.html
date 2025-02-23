@@ -10,19 +10,19 @@
     <h2>Registrar Fichaje</h2>
     <form action="{{ url_for('fichar') }}" method="POST">
         <label for="vehiculo">Matrícula del Vehículo:</label>
-        <input type="text" name="vehiculo" id="vehiculo" required>
+        <input type="text" name="vehiculo" id="vehiculo" required>  <!-- Se usa input en vez de desplegable -->
         
         <label for="estado">Estado:</label>
         <select name="estado" id="estado">
             <option value="Entrada">Entrada</option>
             <option value="Salida">Salida</option>
         </select>
-        
+
         <button type="submit">Fichar</button>
     </form>
-    
+
     <a href="{{ url_for('dashboard') }}">Volver al Panel</a>
-    <a href="{{ url_for('logout') }}">Cerrar Sesión</a>
 </body>
 </html>
+
 
