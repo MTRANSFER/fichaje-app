@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Fichar Entrada/Salida</title>
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+    <h2>Registrar Fichaje</h2>
+    
+    <form method="POST" action="/fichar">
+        <label for="vehicle">Vehículo:</label>
+        <select name="vehicle" required>
+            {% for vehicle in vehicles %}
+                <option value="{{ vehicle }}">{{ vehicle }}</option>
+            {% endfor %}
+        </select>
+
+        <label for="status">Estado:</label>
+        <select name="status" required>
+            <option value="Entrada">Entrada</option>
+            <option value="Salida">Salida</option>
+        </select>
+
+        <button type="submit">Registrar Fichaje</button>
+    </form>
+
+    <br>
+    <a href="/dashboard">Volver al Dashboard</a>
+</body>
+</html>
