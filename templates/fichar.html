@@ -10,10 +10,7 @@
     <h1>Registrar Fichaje</h1>
     <form action="{{ url_for('fichar') }}" method="POST">
         <label for="vehiculo">Vehículo:</label>
-        <select name="vehiculo" required>
-            <option value="7411MRJ">7411MRJ</option>
-            <option value="8327LGK">8327LGK</option>
-        </select>
+        <input type="text" name="vehiculo" required>
 
         <label for="estado">Estado:</label>
         <select name="estado" required>
@@ -26,3 +23,4 @@
     <a href="{{ url_for('dashboard') }}">Volver al panel</a>
 </body>
 </html>
+
