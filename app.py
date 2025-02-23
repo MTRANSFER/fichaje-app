@@ -58,11 +58,12 @@ def fichar():
         return redirect(url_for("login"))
 
     if request.method == "POST":
-        if "vehiculo" not in request.form:
-            return "Error: No se recibió el campo 'vehiculo'", 400
+        vehiculo = request.form.get("vehiculo", "").strip()
+        estado = request.form.get("estado", "").strip()
 
-        vehiculo = request.form["vehiculo"]
-        estado = request.form["estado"]
+        if not vehiculo or not estado:
+            return "Error: Todos los campos son obligatorios", 400
+
         fecha_hora = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")  # UTC para evitar problemas de zona horaria
 
         conn = get_db_connection()
@@ -100,4 +101,5 @@ def export():
 
 if __name__ == "__main__":
     app.run(debug=True)
+
 
