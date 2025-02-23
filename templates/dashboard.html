@@ -1,1 +1,53 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Panel de Usuario</title>
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+    <h2>Bienvenido, {{ session['username'] }}</h2>
+
+    {% if role == 'admin' %}
+        <h3>Fichajes de todos los usuarios</h3>
+    {% else %}
+        <h3>Tus fichajes</h3>
+    {% endif %}
+
+    <table>
+        <tr>
+            <th>ID</th>
+            <th>Conductor</th>
+            <th>Vehículo</th>
+            <th>Estado</th>
+            <th>Hora</th>
+        </tr>
+        {% for ficha in fichajes %}
+        <tr>
+            <td>{{ ficha['id'] }}</td>
+            <td>{{ ficha['username'] }}</td>
+            <td>{{ ficha['vehicle'] }}</td>
+            <td>{{ ficha['status'] }}</td>
+            <td>{{ ficha['timestamp'] }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+
+    <h3>Registrar Fichaje</h3>
+    <form method="POST" action="/fichar">
+        <label>Vehículo:</label>
+        <input type="text" name="vehicle" required>
+        <label>Estado:</label>
+        <select name="status">
+            <option value="Entrada">Entrada</option>
+            <option value="Salida">Salida</option>
+        </select>
+        <button type="submit">Fichar</button>
+    </form>
+
+    <br>
+    <a href="/export">Exportar a Excel</a>
+    <br>
+    <a href="/logout">Cerrar Sesión</a>
+</body>
+</html>
 
